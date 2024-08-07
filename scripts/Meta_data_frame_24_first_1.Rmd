@@ -1,0 +1,250 @@
+---
+title: "Meta data frames for 34 first"
+author: "Rikki Frederiksen"
+date: "2024-05-20"
+output: html_document
+---
+
+This document seeks to collect metadata for sequenced 163 VRE isolates based on list of metadata for all NORM-VET isolates. This includes information on geographic origin, isolation year, MIC values, sample type, and sequencing statistics etc. The created data frames are then subset and modified for the 34 first isolates. The document is therefore divided into sections on 1) all NORM-VET metadata, 2) 163 VRE metadata and, 3) 34 first sequenced metadata.  
+
+An issue with the data sheets is that ids from VRE freeze list do not match those from list of MIC or location, and unfortunately can not be made consistent automatically without using rather bulky pattern matching. Ex. freeze list id 2011-01-4277-6 will match both 2011-01-4277-6-1-1-2 and 2011-01-4277-6-1-3-1 in the list with locations.
+
+NB! FOR SOME (TO ME UNKNOWN) REASON, "RUN ALL" FAILS TO RUN ALL CHUNCKS. THEREFORE, THE CHUNKS MUST BE RUN ONE AT THE TIME. 
+
+#install packages 
+```{r install, include=FALSE,eval=FALSE}
+#install.packages("tidyr")
+```
+
+#load libraries
+```{r load, include=FALSE}
+library(tidyr)
+library(dplyr)
+```
+
+##############################################################################################################################################################################
+Section on metadata for all NORM-VET Enteroccocus isolates
+
+#data frame of all VRE from the freeze list
+```{r freeze list, include=TRUE}
+#read freeze list with selective VRE
+VRE_select <- read.csv("C:/Users/vi2285/OneDrive - Veterinaerinstituttet/WGS/Sample_info/VRE_fjørfe selektiv.csv", header=TRUE) #had to change the file name (remove 1_) and remove first row (extra header) to import the sheet to R. 
+VRE_select_1 <- VRE_select[1:228,] #removes empty rows
+VRE_select_1$id_new <- NA #creates new column
+VRE_select_1$id_new <- VRE_select_1$PJS #fills new column with ids
+VRE_select_1$id_new <- paste0(VRE_select_1$id_new, "-") #add underscore to ids. This we need later for matching VRE ids with ids in sheets with location and MIC info 
+```
+
+#data frame of MIC for all 4.311 NORM-VET isolates (code from ICONIC_NORMVET_narR_vanA_seq_4.R)
+```{r MIC, include=TRUE}
+#read PJS extract with NORM-VET MIC data for all Enterococcus isolates from all animals
+MIC <- read.csv("C:/Users/vi2285/OneDrive - Veterinaerinstituttet/NORM_VET_PJS_Data/enterococci_data_normvet_mic.csv")
+#pivot data frame longer
+MIC_1 <- MIC[,1:12]     #remove the last column "operator" as the column hindered reducing row numbers
+MIC_2 <- pivot_wider(data = MIC_1, names_from = navn_analyttkode, values_from = verdi_mengde )
+MIC_3 <- MIC_2 #The list contains MIC data for only 87 isolates from 2009 to 2014, which clearly fewer than the 240 in VRE list. The earlier VRE isolates was not put into PJS according to Madeleine. This means that we have MIC panel test for the VRE isolates from 2009 and onwards only (was MIC not done or just not put in PJS???). 
+```
+
+#data frame of location data of 8.862 NORM_VET isolates (code from ICONIC_NORMVET_narR_vanA_seq_4.R)
+```{r LOCATION, include=TRUE}
+#read PJS extract with NORM-VET location data for Enterococcus isolates from chicken and turkey
+LOCAT <- read.csv("C:\\Users\\vi2285\\OneDrive - Veterinaerinstituttet\\NORM_VET_PJS_Data\\lokalitetsdata_enterokokker_rikki.csv", header = TRUE, encoding="UTF-8")
+LOCAT_1 <- LOCAT
+```
+
+#create the data frame on location and MIC by merge for all NORM_VET isolates
+```{r MIC_LOCATION, include=TRUE}
+#Outer merge of location with MIC
+LOCAT_MIC_merge <- merge(x = LOCAT_1,y = MIC_3, by = "id", all.x = TRUE)
+LOCAT_MIC_merge$VRE_id <- NA #create new column with ids to match those of the 163 VREs
+for (x in VRE_select_1$id_new) {
+  matching_rows <- grep(x, LOCAT_MIC_merge$id)
+  LOCAT_MIC_merge$VRE_id[matching_rows] <- x
+}
+duplicated_elements <- LOCAT_MIC_merge$VRE_id[!is.na(LOCAT_MIC_merge$VRE_id) & duplicated(LOCAT_MIC_merge$VRE_id)] #check for duplicates. If a VRE id is a partial match with the norm-vet id, then the VRE id is inserted into the new column. This however, creates some duplicates as VRE ids matches to multiple normet ids.
+LOCAT_MIC_merge$VRE_id <- with(LOCAT_MIC_merge, ifelse(duplicated(VRE_id, fromLast = TRUE) & !grepl("vankomycinresistent", analytt), "NA", VRE_id)) #if ids are duplicates then the duplicated id containing "vankomycin" in analytt column will be replaced by NA. 
+LOCAT_MIC_merge$VRE_id <- sub("-$","",LOCAT_MIC_merge$VRE_id) #removes "-" at the end of the id as this was just used for matching.
+colnames(LOCAT_MIC_merge)[16] <- "host"
+LOCAT_MIC_merge$host[LOCAT_MIC_merge$host == "H\xf8ns"] <- "Chicken"
+LOCAT_MIC_merge$host[LOCAT_MIC_merge$host == "Kalkun"] <- "Turkey"
+LOCAT_MIC_merge$region <- NA #create new column for region (north, south, east, west, midt)
+LOCAT_MIC_merge$region[LOCAT_MIC_merge$gjeldende_fylke == "Innlandet"] <- "East"
+LOCAT_MIC_merge$region[LOCAT_MIC_merge$gjeldende_fylke == "Tr\xf8ndelag"] <- "Mid"
+LOCAT_MIC_merge$region[LOCAT_MIC_merge$gjeldende_fylke == "Tr\xf8ndelag"] <- "Mid"
+LOCAT_MIC_merge$region[LOCAT_MIC_merge$gjeldende_fylke == "Rogaland"] <- "West"
+LOCAT_MIC_merge$region[LOCAT_MIC_merge$gjeldende_fylke == "Vestfold og Telemark"] <- "South"
+LOCAT_MIC_merge$region[LOCAT_MIC_merge$gjeldende_fylke == "Vestland"] <- "West"
+LOCAT_MIC_merge$region[LOCAT_MIC_merge$gjeldende_fylke == "Agder"] <- "South"
+LOCAT_MIC_merge$region[LOCAT_MIC_merge$gjeldende_fylke == "Viken"] <- "East"
+LOCAT_MIC_merge$region[LOCAT_MIC_merge$gjeldende_fylke == "Oslo"] <- "East" #this list should be filled out!
+```
+
+###########################################################################################################################################################################
+Section on metadata for all 163 VRE isolates
+
+#data frame of assembly statistics for 163 sequenced VRE (code from ICONIC_NORMVET_narR_vanA_seq_4.R)
+```{r STAT_163, include=TRUE}
+#import assembly statistics from NORM-VET narR and vanR isolates (assembly statistics table is from multiqc report generated by bifrost)
+STAT <- read.csv("C:\\Users\\vi2285\\OneDrive - Veterinaerinstituttet\\WGS\\2023_08_29_narR_vanR_assembly\\2023_08_29_narR_vanR_assembly_statistics.csv", header = TRUE, encoding = "UTF-8") #the read csv file was created in Excel as I did not succeed imported the original file from Bifrost "transposed_report.tsv"
+STAT_1 <- STAT
+colnames(STAT_1)[1] <- "id" #change name of first column.
+STAT_2 <- STAT_1[!grepl("NB552450",STAT_1$id),] #removes NextSeq assemblies (NB552450) as these are redundant as the isolates were later sequenced by MiSeq. dataframe has 163 rows as expected
+STAT_2$id <- sub("^[^.]*\\.(.*?)_.*$", "\\1", STAT_2$id) #cleans id's by removing characters before period, removes period, and all characters after the first underscore
+```
+
+data frame of plasmids with ResFinder ARGs for 163 VRE
+```{r PLASM_163_ARG, include=TRUE}
+#read concatenated mob-suite sheet with info on plasmids (types, contig no., rep and mob genes, size etc)  
+PLASM_feat <- read.csv("C:\\Users\\vi2285\\OneDrive - Veterinaerinstituttet\\WGS\\2023_08_29_narR_vanR_mob_suite\\merged_mobtyper_narR_vanR.csv", header = TRUE, encoding = "UTF-8")
+PLASM_feat_1 <- PLASM_feat
+
+#read text file with concatenated contigs assigned to plasmid or chromosome into a data frame
+MOB_contig <- read.table("C:\\Users\\vi2285\\OneDrive - Veterinaerinstituttet\\WGS\\2023_08_29_narR_vanR_mob_suite\\merged_contig_reports_narR_vanR.txt", header = TRUE , sep = "\t")
+
+#read data table with concatenated ResFinder results and contig IDs to dataframe
+PLASM_ARGs <- read.delim("C:\\Users\\vi2285\\OneDrive - Veterinaerinstituttet\\WGS\\2023_08_29_narR_vanR_ResFinder\\merged_ResFinder_results_tab.txt",header =TRUE) #for some reason read.table did not separate tabs properly, but read.delim did.
+
+#create data frame by merge plasmids and resfinder ARGs by contig ids 
+MOB_contig_ARGs <- left_join(MOB_contig, PLASM_ARGs, 
+by  = c("contig_id" = "Contig"))  #this data frame shows ARGS identified in both chromosome and plasmids. Use this data frame to identify individual contigs with ARGs.   
+PLASM_contig_ARGs_1 <- MOB_contig_ARGs[MOB_contig_ARGs$molecule_type == "plasmid",] #this data frame show resistance genes in only plasmids
+PLASM_contig_ARGs_1$sample_id <- paste(PLASM_contig_ARGs_1$sample_id, PLASM_contig_ARGs_1$primary_cluster_id, sep = ":") #merges the content columns of sample name and plasmid name 
+PLASM_contig_ARGs_1$id_unique <- ave(PLASM_contig_ARGs_1$sample_id, PLASM_contig_ARGs_1$sample_id, FUN = seq_along) #Add a unique identifier within each group of 'sample_id' This is needed when pivoting the data frame
+PLASM_contig_ARGs_2 <- reshape(PLASM_contig_ARGs_1, timevar = "id_unique", idvar = "sample_id", direction = "wide") # Reshape the data frame from long to wide format. Tried with pivot_wider, but couldn't make it work
+PLASM_contig_ARGs_3 <- PLASM_contig_ARGs_2[,grep("sample_id|Resistance.gene", names(PLASM_contig_ARGs_2))]  #subsets only columns with id and resistance genes
+PLASM_contig_ARGs_3$ARGs <- apply(PLASM_contig_ARGs_3[,2:29], 1, function(x) paste(x[!is.na(x)], collapse = ", ")) #merge all columns containing ARGs into a new column. Could have used gather() function instead!
+PLASM_contig_ARGs_4 <- PLASM_contig_ARGs_3[,c(1,30)] #subset only the merged column and plasmid ids.
+
+#create data frame by merging plasmid ARGs with feat (mob, rep, size, etc.) by id 
+PLASM_feat_ARGs <- left_join(PLASM_feat_1,PLASM_contig_ARGs_4, by="sample_id") #merge plasmid featues and ARGs identified by ResFinder
+PLASM_feat_ARGs_1 <- separate(PLASM_feat_ARGs, sample_id, into = c("sample_id", "plasmid"), sep = ":") #splits (by colon) sample_id string into two columns. 
+PLASM_feat_ARGs_2 <- PLASM_feat_ARGs_1[,c(1:4,28,7,9,11,15)] #subset and reorder columns (removing columns not considered informative)
+PLASM_feat_ARGs_2$sample_id <- sub("^[^.]*\\.(.*?)_.*$", "\\1", PLASM_feat_ARGs_2$sample_id) #cleans id's by removing characters before period, removes period, and all characters after the first underscore
+PLASM_feat_ARGs_3 <- PLASM_feat_ARGs_2[!PLASM_feat_ARGs_2$sample_id=="sample_id",] #remove all the rows with headlines
+PLASM_feat_ARGs_3$plasmid <- gsub(".*novel.*", "novel", PLASM_feat_ARGs_3$plasmid)
+colnames(PLASM_feat_ARGs_3)[1] <- "id" #change column name 
+```
+
+data frame with short-read assembly stats (GC cont., N50 etc.) and ResFinder ARGs for 163 VRE
+```{r SHORT_STAT_ARG_163, include=TRUE}
+#create data frame by merge chromosome and resfinder ARGS by contig ids
+CHROM_contig_ARGs_1 <- MOB_contig_ARGs[MOB_contig_ARGs$molecule_type == "chromosome",] #this data frame show resistance genes in only chromosome
+CHROM_contig_ARGs_1$id_unique <- ave(CHROM_contig_ARGs_1$sample_id, CHROM_contig_ARGs_1$sample_id, FUN = seq_along) #Add a unique identifier within each group of 'sample_id' This is needed when pivoting the data frame
+CHROM_contig_ARGs_2 <- reshape(CHROM_contig_ARGs_1, timevar = "id_unique", idvar = "sample_id", direction = "wide") # Reshape the data frame from long to wide format. Tried with pivot_wider, but couldn't make it work
+CHROM_contig_ARGs_3 <- CHROM_contig_ARGs_2[,grep("sample_id|Resistance.gene", names(CHROM_contig_ARGs_2))] #subsets only columns with id and resistance genes
+CHROM_contig_ARGs_3$ARGs <- apply(CHROM_contig_ARGs_3[,2:421], 1, function(x) paste(x[!is.na(x)], collapse = ", ")) #merge all columns containing ARGs into a new column. Could have used gather() function instead!
+CHROM_contig_ARGs_4 <- CHROM_contig_ARGs_3[,c(1,422)] #subset only the merged column and sample ids. 163 isolates as expected. 
+colnames(CHROM_contig_ARGs_4)[1] <- "id" #change name of first column. Do this for later merging 
+CHROM_contig_ARGs_4$id <- sub("^[^.]*\\.(.*?)_.*$", "\\1", CHROM_contig_ARGs_4$id) #cleans id's by removing characters before period, removes period, and all characters after the first underscore
+
+#merge chromosome ARGs and assembly stats
+STAT_CHROM_ARGs <- merge(STAT_2, CHROM_contig_ARGs_4, by = "id")
+```
+
+#create data frames with MIC data for 163 VRE (actually only 87)
+```{r MIC_163, include=TRUE}
+#HERE YOUSHOULD INSTEAD SUBSET THE 163 TO GET LOCATION AND POSSIBLE MIC, AND THEN DO A 87 VRE ONLY AFTERWARDS
+MIC_VRE <- MIC_3[MIC_3$analytt == "Enterococcus faecium, vankomycinresistent",] #subsets only 87 VRE isolates with MIC data!!! (code ensures that we don't get data in MICs for non-selective isolates)
+```
+
+##################################################################################################################################################################################
+Section on metadata for first 34 isolates
+
+#create data frames with assembly stats, MICs and location for 34 first only
+```{r STAT_MIC_LOC_34, include=TRUE}
+#create vector of 34 first IDs (used to subset data frames)
+first_34 <- "C:\\Users\\vi2285\\OneDrive - Veterinaerinstituttet\\WGS\\240426_first_24_phylogeny_chr\\alppaca_core_gene_34\\results\\SNPDIST_results.csv" #first open txt file in excel and save it as csv.  
+first_34_1 <- read.csv(first_34, header = TRUE, check.names = FALSE)
+colnames(first_34_1)[1] <- "id" #rename first column
+first_34_1$id <- sub("^[^.]*\\.(.*?)_.*$", "\\1", first_34_1$id) #cleans id's by removing characters before period, removes period, and all characters after the first underscore
+first_34_2 <- first_34_1[,1] #create vector 
+
+#create data frame with MIC and location data for 34
+LOCAT_MIC_34_first <- LOCAT_MIC_merge[LOCAT_MIC_merge$VRE_id %in% first_34_2,] #subset only 34 first 
+LOCAT_MIC_34_first_1 <- LOCAT_MIC_34_first[,-1] #removes first column with long IDs
+colnames(LOCAT_MIC_34_first_1)[49] <- "id" #renames column 34 with shorter IDs
+  #clean up for table in paper 
+  LOCAT_MIC_34_first_1$id <- sub("-01","",LOCAT_MIC_34_first_1$id)  #removes -01 from the short name to fit labels in phylo tree
+  LOCAT_MIC_34_first_2 <- LOCAT_MIC_34_first_1[,c(1,49,50)] #subset only year, region and id
+  colnames(LOCAT_MIC_34_first_2)[1]<-"year"
+  write.csv(LOCAT_MIC_34_first_2, file="C:/Users/vi2285/OneDrive - Veterinaerinstituttet/WGS/24_first_paper/LOCAT_MIC_34_first_2.csv",row.names = F)
+
+#create data frame with assembly stats and ARGs (and host) for only 34 first genomes/chromosomes
+STAT_ARGs_first_34 <- STAT_CHROM_ARGs[STAT_CHROM_ARGs$id %in% first_34_2  ,] #creates a data frame with stats of only 34 first. Can not use merge, as a vector does not have column name for merge on. 
+colnames(STAT_ARGs_first_34)[2] <- "N50" 
+colnames(STAT_ARGs_first_34)[5] <- "size" 
+STAT_ARGs_first_34$N50<- sub("Kbp","",STAT_ARGs_first_34$N50) #remove units, so column stats can be calculated
+N50_median <- median(as.numeric(STAT_ARGs_first_34$N50)) #median
+N50_max <- max(as.numeric(STAT_ARGs_first_34$N50)) #max
+N50_min <- min(as.numeric(STAT_ARGs_first_34$N50)) #min
+STAT_ARGs_first_34$size<- sub("Mbp","",STAT_ARGs_first_34$size) #remove units, so column stats can be calculated
+size_median <- median(as.numeric(STAT_ARGs_first_34$size))
+size_max <- max(as.numeric(STAT_ARGs_first_34$size))
+size_min <- min(as.numeric(STAT_ARGs_first_34$size))
+STAT_ARGs_first_34$species <- NA    #create a new column for species info
+hirae <- c("2002-01-139","2002-01-222","2002-01-493","2002-01-554")
+STAT_ARGs_first_34$species <- ifelse(STAT_ARGs_first_34$id %in% hirae, "E. hirae", "E. faecium") #populate with species info
+STAT_ARGs_first_34_1 <- merge(STAT_ARGs_first_34, LOCAT_MIC_34_first_1[,c("id","host")])  #add column with host info by merge
+STAT_ARGs_first_34_1$id <- sub("-01","",STAT_ARGs_first_34_1$id) #remove "-01" from all IDs
+STAT_ARGs_first_34_2 <- STAT_ARGs_first_34_1[,c(1:2,5,10:12)]  #subset only columns relevant for paper
+
+#create data frame with hybrid stats for 10 VRE
+STAT_hybrid <- read.csv("C:\\Users\\vi2285\\OneDrive - Veterinaerinstituttet\\WGS\\231218_nanopore_hybrid\\231016_sample_processing_results_v2_a.csv", header =TRUE)
+STAT_hybrid_1 <- STAT_hybrid[1:10,]  #remove Jannices isolates from list
+colnames(STAT_hybrid_1)[1] <- "id"
+STAT_hybrid_1$id <- sub("-01","", STAT_hybrid_1$id)
+STAT_hybrid_2 <- STAT_hybrid_1[,c(1,4,12:13)]  #subset relevant columns
+N50_hybrid_median <- median(as.numeric(STAT_hybrid_2$N50))
+contigs_hybrid_median <- median(as.numeric(STAT_hybrid_2$contigs))
+
+#create data frame for plasmid metadata (rep, mob, ARG etc.)
+PLASM_feat_ARGs_first_34 <- PLASM_feat_ARGs_3[PLASM_feat_ARGs_3$id %in% first_34_2,] #subsets only the 34 VREs from 163 VREs (see above)
+PLASM_feat_ARGs_first_34$species <- NA    #create a new column for species info
+hirae_1 <- c("2002-01-139","2002-01-222","2002-01-493","2002-01-554")   #create a vector of E. hirae isolates
+PLASM_feat_ARGs_first_34$species <- ifelse(PLASM_feat_ARGs_first_34$id %in% hirae_1, "E. hirae", "E. faecium") #insert species info
+PLASM_feat_ARGs_first_34_1 <- merge(PLASM_feat_ARGs_first_34, LOCAT_MIC_34_first_1[,c("id","host")])  #add column with host info by merge 
+PLASM_feat_ARGs_first_34_1$id <- sub("-01","",PLASM_feat_ARGs_first_34_1$id) #remove "-01" from all IDs
+PLASM_feat_ARGs_first_34_1$plasmid[PLASM_feat_ARGs_first_34_1$plasmid=="AB172"]<-"pVEF-like"
+PLASM_feat_ARGs_first_34_1$plasmid[PLASM_feat_ARGs_first_34_1$plasmid=="AB171"]<-"pEF1-like"
+PLASM_feat_ARGs_first_34_1$plasmid[PLASM_feat_ARGs_first_34_1$plasmid=="AC728"]<-"pNB2354_1-like"
+PLASM_feat_ARGs_first_34_1$rep_type.s. <- gsub("Inc18","PriCT_1", PLASM_feat_ARGs_first_34_1$rep_type.s.)
+PLASM_feat_ARGs_first_34_1$rep_type.s. <- gsub("rep_cluster_185","PriCT_1", PLASM_feat_ARGs_first_34_1$rep_type.s.)
+PLASM_feat_ARGs_first_34_1$rep_type.s. <- gsub("rep_cluster_183","PriCT_1", PLASM_feat_ARGs_first_34_1$rep_type.s.)
+PLASM_feat_ARGs_first_34_1$rep_type.s. <- gsub("rep_cluster_1093","Rep_3", PLASM_feat_ARGs_first_34_1$rep_type.s.)
+PLASM_feat_ARGs_first_34_1$rep_type.s. <- gsub("rep_cluster_1197","Rep_3", PLASM_feat_ARGs_first_34_1$rep_type.s.)
+PLASM_feat_ARGs_first_34_1$rep_type.s. <- gsub("rep_cluster_1291","Rep_3", PLASM_feat_ARGs_first_34_1$rep_type.s.)
+PLASM_feat_ARGs_first_34_1$rep_type.s. <- gsub("rep_cluster_893","RepA_N", PLASM_feat_ARGs_first_34_1$rep_type.s.)
+PLASM_feat_ARGs_first_34_1$rep_type.s. <- gsub("rep_cluster_893","RepA_N", PLASM_feat_ARGs_first_34_1$rep_type.s.)
+PLASM_feat_ARGs_first_34_1$rep_type.s. <- gsub("rep_cluster_943","Rep_trans", PLASM_feat_ARGs_first_34_1$rep_type.s.)
+PLASM_feat_ARGs_first_34_1$rep_type.s. <- gsub("rep_cluster_1763","Rep_3", PLASM_feat_ARGs_first_34_1$rep_type.s.)
+PLASM_feat_ARGs_first_34_1$rep_type.s. <- gsub("rep_cluster_889","RepA_N?", PLASM_feat_ARGs_first_34_1$rep_type.s.)
+PLASM_feat_ARGs_first_34_1$relaxase_type.s.[PLASM_feat_ARGs_first_34_1$relaxase_type.s.== "-"] <- ""
+PLASM_feat_ARGs_first_34_1$mpf_type[PLASM_feat_ARGs_first_34_1$mpf_type == "-"] <- ""
+PLASM_feat_ARGs_first_34_1$mobility <- paste(PLASM_feat_ARGs_first_34_1$relaxase_type.s., PLASM_feat_ARGs_first_34_1$mpf_type, sep = " ")  #merge the two columns with mobility genes
+average_plasmids <- table(PLASM_feat_ARGs_first_34_1$id)   #counts the number duplicates for each item 
+average_plasmids_1 <- mean(average_plasmids)     #calculates the mean of the duplicates
+number_plasmids <- table(PLASM_feat_ARGs_first_34_1$plasmid) #counts how many times each plasmid appears
+max_plasm_size <- max(as.numeric(PLASM_feat_ARGs_first_34_1$size))
+min_plasm_size <- min(as.numeric(PLASM_feat_ARGs_first_34_1$size))
+PLASM_feat_ARGs_first_34_2 <- PLASM_feat_ARGs_first_34_1[,c(1:6,12,10,11)]
+#pVEF_pNB2354_feat_ARGs_first_34_2 <- PLASM_feat_ARGs_first_34_2[PLASM_feat_ARGs_first_34_2$plasmid=="pVEF-like" | PLASM_feat_ARGs_first_34_1$plasmid=="pNB2354_1-like" ,] #subsets only pVEF and pNB2354_1 plasmids (maybe for use in paper)
+#PLASM_feat_ARGs_first_34_3 <- PLASM_feat_ARGs_first_34_2 %>% mutate(plasmid = factor(plasmid, levels=c("pNB2354_1","pVEF"))) %>% arrange(id, plasmid) #reorder rows
+
+```
+
+#################################################################################################################################
+Obsolete code as "create data with MIC and location already exists?
+
+```{r OBSOL, include=TRUE}
+#create data frame with MICs for 34 first only (only data for 11 exists) 
+  #An issue here is that ids from VRE freeze list do not match those from list of MIC or location and unfortunately can not be made consistent automatically without using          patterns.
+  MIC_first_34 <- MIC_VRE
+  MIC_first_34$VRE_id <- NA #create a new column for matched ids.
+  #Loop through each pattern (vector of 34 first VRE isolate ids) to find matches and update the new column
+  for (x in first_34_2) {   
+  current_matches <- grepl(x, MIC_first_34$id, ignore.case = TRUE)
+  MIC_first_34$VRE_id[current_matches] <- x # Update the new column with the pattern for the matched rows
+  }  #only 11 of the 34 first VRE isolates have MIC data
+  MIC_first_34_1 <- MIC_first_34[!is.na(MIC_first_34$VRE_id),] #subsets VREs with MIC data
+  MIC_first_34_2 <- MIC_first_34_1[,c(33,5,7,22:23,11:13,15:17,19,25,27)]  #subsets columns with informative data
+```

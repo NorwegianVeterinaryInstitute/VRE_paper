@@ -1,0 +1,182 @@
+---
+title: "Phylogeny_first_24"
+author: Rikki Frederiksen
+output: html_document
+date: "2023-05-01"
+---
+#the visualisations of phylogenetic tree are based on Eve's tutorial "ggtree_tree_annotation" which can be found both as html and .rmd here:
+#https://github.com/NorwegianVeterinaryInstitute/nvi-documentation/tree/336974a51b859cbd67e6758aad68eac79ecf92e7/docs/source/tutorials/ggtree_tree_annotation
+
+## install packages
+
+```{r setup, echo=FALSE, eval=FALSE}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+if (!requireNamespace("rmarkdown", quietly = TRUE)) #checks if rmarkdown is installed in installs if not. 
+  install.packages("rmarkdown")                       #install rmarkdown
+if (!requireNamespace("ggtree", quietly = TRUE))
+  BiocManager::install("ggtree")
+if (!requireNamespace("ggtreeExtra", quietly=TRUE))
+  BiocManager::install("ggtreeExtra")
+if (!requireNamespace("tidyverse", quietly = TRUE))
+  BiocManager::install("tidyverse")
+  if (!requireNamespace("ggstar", quietly = TRUE))
+  BiocManager::install("ggstar")
+if (!requireNamespace("xfun", quietly = TRUE))
+  install.packages("xfun", dependencies = T)     
+if (!requireNamespace("pacman", quietly = TRUE))
+  install.packages("pacman", dependencies = T)        #install package manager "pacman"
+if (!require("viridis", quietly = TRUE))
+    install.packages("phangorn")
+if (!require("phangorn", quietly = TRUE))
+    install.packages("viridis")
+```
+
+## load packages
+
+```{r setup, echo=FALSE}
+library(rmarkdown)                                  #loading the package into Rstudio
+library("ggtree")
+library("ggtreeExtra")
+library(tidyverse)
+library("ggstar")
+library(pacman)
+library(magrittr)
+library(ggplot2)
+library(treeio)
+library(ggnewscale)
+library(ggtree)
+library(ape)
+library(stringr)
+library(viridis)
+library(phangorn)
+library(dplyr)
+library(tidytree)
+library(RColorBrewer)
+p_load(stringr, dplyr, ggtree, treeio, ape, ggplot2, ggnewscale, Cairo)  #p_load is a function in pacman for loading packages (instead of using "library"). ape is an R package with functions for reading, writing, plotting, and manipulating phylogenetic trees
+```
+
+## creating phylogenetic tree  (chr"30")
+
+```{r reading the tree 1, eval=TRUE}
+#This is the same selection of isolates as "chr 34" above, except the 4 E hirae has been removed and they decreased tree resolution
+tree_file_5 <- "C:/Users/vi2285/OneDrive - Veterinaerinstituttet/WGS/240426_first_24_phylogeny_chr/alppaca_core_gene_30_outgr_96/results/IQTREE_tree.phylo"
+tree_5 <- ape::read.tree(tree_file_5)        #reads the consensus-tree file in newick format and puts it into an object
+library(stringr)
+tree_5$tip.label <- sub("^.{14}","",tree_5$tip.label)     #clean tip labels
+tree_5$tip.label <- sub("_S.*","",tree_5$tip.label)       #clean tip labels some more
+tree_5$tip.label <- sub("-01","",tree_5$tip.label)     
+tree_5$tip.label <- sub("_00","",tree_5$tip.label)  
+tree_5$tip.label <- sub("_chromosome","",tree_5$tip.label) 
+```
+
+## prepare metadata for tree (host, sample type) 
+
+```{r metadata, echo=FALSE}
+#create a dataframe containing metadata (e.g. host and sample types) to be added to the phylogenetic tree
+metadata_3 <- "C:\\Users\\vi2285\\OneDrive - Veterinaerinstituttet\\WGS\\Sample_info\\WGS_VRE_List_Rikki.csv"
+metadata_frame_3 <- read.csv(metadata_3, header = FALSE)               #create data frame from sample list
+metadata_frame_3$V8<-sub("-01","",metadata_frame_3$V8)
+colnames(metadata_frame_3)[8] <- "id"                                #change name of column containing PJS id
+colnames(metadata_frame_3)[12] <- "host"
+metadata_frame_4 <- data.frame("id" = tree_5$tip.label)              #create vector from tip labels of the tree
+library(dplyr)
+metadata_tree_4 <- left_join(x=metadata_frame_4,y=metadata_frame_3,by = "id")       #make inner join of the data frame and the vector
+```
+
+## prepare metadata for heatmap 
+
+```{r metadata, echo=FALSE}
+LOCAT_MIC_34_first_2 <- read.csv("C:\\Users\\vi2285\\OneDrive - Veterinaerinstituttet\\WGS\\24_first_paper\\LOCAT_MIC_34_first_2.csv",header = TRUE) 
+rownames(LOCAT_MIC_34_first_2) <- LOCAT_MIC_34_first_2$id  #replace row numbers with names from id column. This is needed later
+metadata_heatmap <- LOCAT_MIC_34_first_2[,c(1,3)] 
+metadata_heatmap$year <- factor(metadata_heatmap$year, levels = sort(unique(metadata_heatmap$year)))
+```
+
+## visualization of tree (chr"30")
+
+```{r specify data tree,  eval=T, echo=T, results="hide",}
+#unrooted tree
+simple_plot_5 <- 
+  ggtree::ggtree(tree_5, 
+                 layout = "rectangular", 
+                 ladderize = T, 
+                 lwd = .2) %<+%      # the %<+% expression is used to assign values to variables within a ggplot object
+  metadata_tree_4
+simple_plot_5
+```
+
+## Adding layers to plot (chr"30")
+
+```{r specify mapping and layers,  eval=T, echo=T, results="hide", class.source='klippy'}
+#tip points by host
+p_tree_5<-simple_plot_5 + 
+  geom_tippoint(aes(color=host))+  #adding points (shapes/symbols) to tips with info on host
+  geom_treescale(fontsize = 2)+
+  geom_nodelab(size = 2, nudge_x = -0.00018, nudge_y = 0.5)+  #adds bootstrap values
+  labs(color = "animal host")+ #changes legend name
+  scale_color_discrete(labels=c("Chicken"="Broiler","Turkey"="Turkey"))
+p_tree_5
+
+#tip labels
+p_tree_6 <- p_tree_5 + new_scale_color() #add a new scale for color aesthetics as there is already an color aesthetics. 
+p_tree_7 <- p_tree_6 + 
+  geom_tiplab(aes(label = label,color=label),size = 3,offset=0.00015)+   #adding tip labels. "offset" is the distance between tiplabel and tree.
+  scale_color_manual(values = c("2011-5252-1"="blue","2011-4277-6"="blue","2009-1808-4"="blue","2011-3991-4"="blue","2011-8174-2"="blue","2011-8174-2"="blue"))+ #manually set color for specific labels. 
+  guides(color = "none") #removes legend
+p_tree_7
+```
+
+##adding heatmaps (chr. 30) 
+
+```{r tree w heatmap,  eval=T, echo=T}
+#plot midpoint rooted tree with heatmap
+h6 <- gheatmap(p_tree_7, metadata_heatmap[, 1,drop=FALSE], width = 0.1, offset=0.001, legend_title = "year") #appends a heatmap of a matrix to the right side of a phylogenetic tree. "offset" is the distance between tree and heatmap (increase for bigger distance). "colnames_angle" changes the angle of the heatmap legend. "width" is the width of the heatmap. "color" is the color of the heatmap grid. "font.size" is the font of the legend. "hjust" is the horizontal (height) location of the legend. Breaks are scale limits. "values" are the aesthetic values to map data values to. Scale_alpha_discrete changes the scale from continuous years to discrete years.  
+h7 <- h6 + new_scale_fill() #create new scale is a scale already exists.  
+h8 <- gheatmap(h7,metadata_heatmap[,2,drop=FALSE], width = 0.1, offset=0.002, legend_title = "region")
+h8
+ggsave("phylo_5.png",h8)
+```
+##phylogenetic tree of plasmids  
+
+```{r tree w heatmap,  eval=F, echo=T}
+#create tree file
+tree_plasm_file <-"C:/Users/vi2285/OneDrive - Veterinaerinstituttet/WGS/240426_first_24_phylogeny_plasm/alppaca_snippy_34_2/results/IQTREE_tree.phylo"
+tree_plasm <- ape::read.tree(tree_plasm_file)        #reads the consensus-tree file in newick format and puts it into an object
+tree_plasm$tip.label <- sub("^.{14}","",tree_plasm$tip.label)     #clean tip labels
+tree_plasm$tip.label <- sub("_S.*","",tree_plasm$tip.label)       #clean tip labels some more
+tree_plasm$tip.label <- sub("-01","",tree_plasm$tip.label)   
+
+#midpoint rooting
+tree_plasm_mid <- midpoint(tree_plasm)
+
+#visualise tree
+tree_plot <- ggtree(tree_plasm_mid, layout = "rectangular", ladderize = T, lwd = .2) %<+% # the %<+% expression is used to assign values to variables within a ggplot object
+  metadata_tree_4
+
+#add tip points
+tree_plot_1 <-tree_plot +
+  geom_tippoint(aes(color=host))+  #adding points (shapes/symbols) to tips with info on host
+  geom_treescale(fontsize = 2)+
+  geom_nodelab(size = 2, nudge_x = -0.0001, nudge_y = 0.5)+  #adds bootstrap values
+  labs(color = "animal host")+ #changes legend name
+  scale_color_discrete(labels=c("Chicken"="Broiler","Turkey"="Turkey"),breaks=c("Chicken","Turkey")) #labels changes label name and labels present in legend. 
+tree_plot_1
+
+#add labels
+tree_plot_2 <- tree_plot_1 + new_scale_color() #add a new scale for color aesthetics as there is already an color aesthetics. 
+tree_plot_3 <- tree_plot_2 + 
+  geom_tiplab(aes(label = label,color=label),size = 3,offset=0.00015)+   #adding tip labels. "offset" is the distance between tiplabel and tree.
+  scale_color_manual(values = c("2011-5252-1"="blue","2011-4277-6"="blue","2009-1808-4"="blue","2011-3991-4"="blue","2011-8174-2"="blue","2011-8174-2"="blue"))+ #manually set color for specific labels. 
+  guides(color = "none") #removes legend
+tree_plot_3
+
+#add heatmaps 
+tree_heat <- gheatmap(tree_plot_3, metadata_heatmap[, 1,drop=FALSE], width = 0.1, offset=0.001, legend_title = "year")+
+  scale_alpha_discrete()
+tree_heat_1 <- tree_heat + new_scale_fill()
+tree_heat_2 <- gheatmap(tree_heat_1,metadata_heatmap[,2,drop=FALSE], width = 0.1, offset=0.002, legend_title = "region")
+tree_heat_2
+ggsave("phylo_plasm_1.png",height =5.5)
+```
+
